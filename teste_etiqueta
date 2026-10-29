@@ -1,0 +1,51 @@
+*&---------------------------------------------------------------------*
+*& Report ZPP_R_WEIGH_LABEL_TEST
+*& Teste / reimpressao manual da etiqueta de pesagem (EF 5884)
+*& Le o registro real da /SIBR/TWEIGH_LOG por centro + ordem.
+*& GUID em branco = imprime todos os splits da ordem.
+*&---------------------------------------------------------------------*
+REPORT zpp_r_weigh_label_test.
+
+PARAMETERS: p_werks  TYPE werks_d OBLIGATORY,
+            p_aufnr  TYPE aufnr   OBLIGATORY,
+            p_guid   TYPE /sibr/e_piq_guid,
+            p_pdest  TYPE rspopname,
+            p_prev   TYPE abap_bool AS CHECKBOX DEFAULT abap_true.
+
+DATA: vl_msg TYPE string.
+
+START-OF-SELECTION.
+
+  DATA(vl_aufnr) = CONV aufnr( |{ p_aufnr ALPHA = IN }| ).
+
+  SELECT * FROM /sibr/tweigh_log
+    WHERE werks = @p_werks
+      AND aufnr = @vl_aufnr
+      AND ( guid = @p_guid OR @p_guid IS INITIAL )
+    ORDER BY guid
+    INTO TABLE @DATA(tl_sibr).
+
+  IF tl_sibr IS INITIAL.
+    MESSAGE 'Nenhum registro de pesagem encontrado' TYPE 'E'.
+  ENDIF.
+
+  LOOP AT tl_sibr INTO DATA(wl_sibr).
+
+    CLEAR vl_msg.
+
+    CALL FUNCTION 'ZMF_E5884_WEIGHT_LABEL_PRINT'
+      EXPORTING
+        im_weight_data = wl_sibr
+        im_print_imm   = COND #( WHEN p_prev = abap_true THEN space ELSE 'X' )
+        im_show_dialog = p_prev
+        im_printer     = p_pdest
+      IMPORTING
+        ex_errmsg      = vl_msg.
+
+    IF vl_msg IS NOT INITIAL.
+      WRITE: / icon_red_light AS ICON, wl_sibr-guid, vl_msg.
+    ELSE.
+      WRITE: / icon_green_light AS ICON, wl_sibr-guid, 'Etiqueta enviada'.
+    ENDIF.
+
+  ENDLOOP.
